@@ -1,0 +1,225 @@
+ <?php 
+  $con= mysql_connect("localhost","root","root");
+  if(!$con)
+  {
+     die('Could not connect: ' . mysql_error());
+  }
+  mysql_select_db("test", $con);
+  mysql_query('set names utf8');
+ 
+  $des = isset($_REQUEST['Target'])?($_REQUEST['Target']):""; 
+ 
+  $sql = "select distinct Target,IPaddress from tknifelog where Target= '{$des}' ";
+  $query = mysql_query($sql);
+  while($result= mysql_fetch_assoc($query)){
+    $data[]=$result;
+  }
+  //一层关系
+  $p=0;
+  $source = 0;
+  $source1 = 0;
+  foreach ($data as $row ){
+    $Target = $row['Target'];
+    $IPaddress = $row['IPaddress'];
+    //nodes0
+    if($p++==0){
+      $node[]= '{"name":"'.$Target.'","group":1}';
+    }
+    $node[]= '{"name":"'.$IPaddress.'","group":1}';
+    //links0
+    $source++;
+    $link .= '{"source":'.$source.',"target":0,"value":'.rand(1,10).'},';
+    $target = $source;
+    $source1= $source;
+  
+  //二层关系
+    $sql1 = "select distinct Target,IPaddress from tknifelog where IPaddress = '{$IPaddress}'";
+    $query1 = mysql_query($sql1);
+    while ($result1 = mysql_fetch_assoc($query1)) {
+        $data1[] = $result1;
+      }
+    foreach ($data1 as $row1) {
+      $Target1 = $row1['Target'];
+      $IPaddress1 = $row1['IPaddress'];
+      //nodes1
+      if (!in_array('{"name":"'.$Target1.'","group":2}',$node)) {
+        $node[]= '{"name":"'.$Target1.'","group":2}';
+        //links1
+      $source1++;
+      $link .= '{"source":'.$source1.',"target":'.$target.',"value":'.rand(1,10).'},';
+      $source++;
+    }
+      }
+      
+  }
+ 
+ 
+ 
+ $json_n = json_encode($node); 
+ $nodes = '{"nodes":'. $json_n ;
+ $json_l= json_encode($link);
+ $links = '"links":['.$json_l.']}';
+ 
+ $json_f = $nodes.$links;
+ 
+   $new1 = str_replace('\"','"',$json_f);
+   $new2 = str_replace('"{','{',$new1);
+   $new3 = str_replace('}"','}',$new2);
+   $new4 = str_replace('}]"','}],"', $new3);
+   $json = str_replace('},"]}','}]}', $new4);
+ 
+ 
+file_put_contents("force.json",$json);
+ 
+ // echo "json文件已生成";
+  ?>
+<html>
+<head>
+        <meta charset="utf-8">  
+        <title>Force</title>  
+        <link rel="stylesheet" type="text/css" href="css/bootstrap.min.css">
+ 
+<style>
+ 
+.link {
+  stroke: #666;
+}
+ 
+.node text {
+  pointer-events: none;
+  font: 10px sans-serif;
+ 
+.container {
+  margin-top: 30px;
+}
+}
+ 
+</style>
+</head>
+<body>  
+<div class="container">
+  <div class="row">
+    <div class="col-md-3">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Target</th>
+            <th>Source</th>
+          </tr>
+        </thead>
+        <tbody>
+        <?php
+            foreach($data as $row){
+        ?>
+          <tr>
+            <td><a href="test.php?Target=<?php echo $row['Target']?>"><?php echo $row['Target']; ?></a></td>
+            <td><?php echo $row['IPaddress']; ?></td>
+          </tr>
+        <?php
+        }
+        ?>
+        </tbody>
+      </table>
+    </div>
+    <div class="col-md-9 graph"></div>
+  </div>
+</div>
+<script src="js/d3.v3.js" charset="utf-8"></script>  
+<script>    
+ 
+ 
+    
+    var width = 800;
+    var height = 600;
+    var img_w = 17;
+    var img_h = 17;
+ 
+    var color = d3.scale.category20();
+ 
+    var zoom = d3.behavior.zoom()
+          .scaleExtent([1, 10])
+          .on("zoom", zoomed);
+ 
+  var root = d3.select(".graph").append("svg")
+      .attr("width", width)
+      .attr("height", height)
+      .call(zoom);
+ 
+var svg = root.append('svg:g'); 
+ 
+var force = d3.layout.force()
+    .gravity(.05)
+    .distance(100)
+    .charge(-100)
+    .size([width, height]);
+ 
+d3.json("force.json", function(error, json) {
+  if (error) throw error;
+ 
+  force
+      .nodes(json.nodes)
+      .links(json.links)
+      .start();
+ 
+  var link = svg.selectAll(".link")
+      .data(json.links)
+    .enter().append("line")
+      .attr("class", "link");
+ 
+  var node = svg.selectAll(".node")
+      .data(json.nodes)
+      .enter().append("g")
+      .attr("class", "node")
+      .call(force.drag);
+ 
+  node.append("circle")
+      .attr("r", 5)
+      .style("fill", function(d) { return color(d.group); });
+ 
+  node.append("text")
+      .attr("dx", 12)
+      .attr("dy", ".35em")
+      .text(function(d) { return d.name });
+ 
+  var drag =force.drag()
+            .on("dragstart",function(d,i){
+              d3.event.sourceEvent.cancelBubble = true;
+              d.fixed = true;    //拖拽开始后设定被拖拽对象为固定
+            });
+ 
+ 
+  force.on("tick", function() {
+    link.attr("x1", function(d) { return d.source.x; })
+        .attr("y1", function(d) { return d.source.y; })
+        .attr("x2", function(d) { return d.target.x; })
+        .attr("y2", function(d) { return d.target.y; });
+ 
+        //限制结点的边界
+        json.nodes.forEach(function(d,i){
+          d.x = d.x - img_w/2 < 0     ? img_w/2 : d.x ;
+          d.x = d.x + img_w/2 > width ? width - img_w/2 : d.x ;
+          d.y = d.y - img_h/2 < 0      ? img_h/2 : d.y ;
+          d.y = d.y + img_h/2 > height ? height - img_h/2 : d.y ;
+        });
+ 
+    node.attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; })
+        .on("dblclick",function(d,i){
+                  d.fixed = false;
+                })
+        .call(drag);
+ 
+ 
+  });
+});
+ 
+  function zoomed () {
+        svg.attr("transform", 
+          "translate(" + d3.event.translate + ")scale(" + d3.event.scale + ")");
+      } ;
+        </script>  
+    
+    </body>  
+</html> 
+————————————————
+版权声明：本文为CSDN博主「一直走别回头_」的原创文章，遵循CC 4.0 BY-SA版权协议，转载请附上原文出处链接及本声明。
+原文链接：https://blog.csdn.net/u012603073/java/article/details/46874559
