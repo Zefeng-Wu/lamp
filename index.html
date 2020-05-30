@@ -51,6 +51,7 @@
     	];
     	//设置一个color的颜色比例尺，为了让不同的扇形呈现不同的颜色
     	var color = "steelblue";
+	var link_color = "gray"
     	
     	//新建一个力导向图
     	var forceSimulation = d3.forceSimulation()
@@ -83,7 +84,7 @@
     		.data(edges)
     		.enter()
     		.append("line")
-    		.attr("stroke",color)
+    		.attr("stroke",link_color)
     		.attr("stroke-width",1);
     	var linksText = g.append("g")
     		.selectAll("text")
